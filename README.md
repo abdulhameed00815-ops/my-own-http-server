@@ -1,7 +1,5 @@
-# *project goals: *
+# My own http server
 
-1-make a low level http server using asgi.
-<br/>
-2-get a deeper understanding of how web frameworks work.
-<br/>
-3-the server should only support get requests.
+## Project details:
+
+This project is a low level, asgi http server that handles basic get requests.
