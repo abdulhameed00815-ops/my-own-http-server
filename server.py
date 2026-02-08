@@ -1,4 +1,5 @@
 import socket
+import os
 
 
 class PicoHTTPRequestHandler():
@@ -62,6 +63,35 @@ class PicoHTTPHandler:
 
         if self.command not in ("HEAD", "GET"):
             return self._return_405()
+    
+
+    def _validate_path(self) -> bool:
+        #the line below joins the current working directory (where the server runs) and the absolute path of the request.
+        self.path = os.path.join(os.getcwd(), self.path.lstrip('/'))
+        if os.path.isdir(self.path):
+            self.path = os.path.join(self.path, 'index.html')
+        elif os.path.isfile(self.path):
+            pass
+
+        if not os.path.exists(self.path):
+            return False
+
+        return True
+
+
+    def _return_404(self) -> None:
+        self.write_response_line(404)
+        self.write_headers()
+
+
+    def _return_405(self) -> None:
+        self.write_response_line(405)
+        self.write_headers()
+    
+
+    def _return_403(self) -> None:
+        self.write_response_line(403)
+        self.write_headers()
 
 
 
