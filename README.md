@@ -2,4 +2,4 @@
 
 ## Project details:
 
-This project is a low level, asgi http server that handles basic get requests.
+This project is an attempt to make a low level http server "from scratch".
