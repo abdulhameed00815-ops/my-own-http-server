@@ -43,12 +43,46 @@ class PicoHTTPRequestHandler():
         logger.info(headers)
 
 
+    def handler(self) -> None:
+        command = getattr(self, f'handle_{self.command}')
+        command()
+
+
     def handle_GET(self) -> None:
-        pass
+        self.handle_HEAD()
+
+        with open(self.path, 'rb') as f:
+            body = f.read()
+
+        self.response_stream.write(body)
+        self.response_stream.flush()
 
 
     def handle_HEAD(self) -> None:
-        pass
+        self.write_response_line(200)
+        self.write_headers(
+                **{
+                    "Content-Length": os.path.getsize(self.path)
+                }
+        )
+        self.response_stream.flush()
+
+
+    def _write_response_line(self, status_code: int) -> None:
+        response_line = f'HTTP/1.1 {status_code} {HTTPStatus(status_code).phrase} \r\n'
+        logger.info(response_line.encode())
+        self.response_stream.write(response_line.encode())
+
+
+    def _write_headers(self, *args, **kwargs) -> None:
+        headers_copy = self.headers.copy()
+        headers_copy.update(**kwargs)
+        header_lines = '\r\n'.join(
+                f'{k}: {v}' for k, v in headers_copy.items()
+        )
+        logger.info(header_lines.encode())
+        self.response_stream.write(header_lines.encode())
+        self.response_stream.write(b'\r\n\r\n')
 
         
 class PicoHTTPHandler:
