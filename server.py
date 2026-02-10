@@ -12,16 +12,19 @@ class PicoHTTPRequestHandler():
         self.client = client
         self.command = ''
         self.path = ''
+        self.request_headers = {}
         self.headers = {
-                'Content-Type:': 'text/html',
+                'Content-Type': 'text/html',
                 'Content-Length': '0',
                 'Connection': 'close'
         }
-        self.data = ''
-        self.handle()
+        self.request_body = ''
+        self.parser()
+        if self.path_validator():
+            self.handle()
 
 
-    def handle(self) -> None:
+    def parser(self) -> None:
         self._parse_request()
 
 
@@ -34,13 +37,75 @@ class PicoHTTPRequestHandler():
         self.command = requestline.split(' ')[0]
         self.path = requestline.split(' ')[1]
 
-        headers = {}
         line = self.request_stream.readline().decode()
         while line not in ('\r\n', '\n', '\r', ''):
-            header = line.rstrip('\r\n').split(': ')
-            headers[header[0]] = header[1]
+            #now we split the line only on the first instance of ': '.
+            key, value = line.rstrip('\r\n').split(': ', 1)
+            self.request_headers[key] = value
             line = self.request_stream.readline().decode()
-        logger.info(headers)
+        logger.info(self.request_headers)
+
+        content_type = self.request_headers.get('Content-Type', None)
+
+        if content_type == "text/plain" or content_type == "text/html":
+            content_length = int(self.request_headers.get('Content-Length', 0))
+            if content_length > 0:
+                request_body = self.request_stream.read(content_length)
+                self.request_body = request_body.decode()
+        elif content_type == "application/json":
+            content_length = int(self.request_headers.get('Content-Length', 0))
+            if content_length > 0:
+                request_body = self.request_stream.read(content_length)
+                self.request_body = {}
+                json_value = request_body.lstrip("{").split(": ", 1).rstrip("}")
+                self.request_body[json_value[0]] = json_value[1].rstrip(",")
+
+
+        logger.info(self.request_body)
+
+
+    def path_validator(self) -> None:
+        if not self._validate_path():
+            return self._return_404()
+        else:
+            self.method_validator()
+
+    
+
+    def _validate_path(self) -> bool:
+        #the line below joins the current working directory (where the server runs) and the absolute path of the request.
+        self.path = os.path.join(os.getcwd(), self.path.lstrip('/'))
+        if os.path.isdir(self.path):
+            self.path = os.path.join(self.path, 'index.html')
+        elif os.path.isfile(self.path):
+            pass
+
+        if not os.path.exists(self.path):
+            return False
+
+        return True
+
+
+    def _return_404(self) -> None:
+        self.write_response_line(404)
+        self.write_headers()
+        self.response_stream.flush()
+
+
+    def _return_405(self) -> None:
+        self.write_response_line(405)
+        self.write_headers()
+        self.response_stream.flush()
+    
+
+    def _return_403(self) -> None:
+        self.write_response_line(403)
+        self.write_headers()
+        self.response_stream.flush()
+
+
+    def handle(self) -> None:
+        self.handler()
 
 
     def handler(self) -> None:
@@ -56,6 +121,10 @@ class PicoHTTPRequestHandler():
 
         self.response_stream.write(body)
         self.response_stream.flush()
+
+
+    def handle_POST(self) -> None:
+        pass
 
 
     def handle_HEAD(self) -> None:
@@ -85,47 +154,6 @@ class PicoHTTPRequestHandler():
         self.response_stream.write(b'\r\n\r\n')
 
         
-class PicoHTTPHandler:
-    def handler(self) -> None:
-        self._parse_request():
-
-        if not self._validate_path():
-            return self._return_404()
-
-        if self.command == "POST":
-            return self._return_403()
-
-        if self.command not in ("HEAD", "GET"):
-            return self._return_405()
-    
-
-    def _validate_path(self) -> bool:
-        #the line below joins the current working directory (where the server runs) and the absolute path of the request.
-        self.path = os.path.join(os.getcwd(), self.path.lstrip('/'))
-        if os.path.isdir(self.path):
-            self.path = os.path.join(self.path, 'index.html')
-        elif os.path.isfile(self.path):
-            pass
-
-        if not os.path.exists(self.path):
-            return False
-
-        return True
-
-
-    def _return_404(self) -> None:
-        self.write_response_line(404)
-        self.write_headers()
-
-
-    def _return_405(self) -> None:
-        self.write_response_line(405)
-        self.write_headers()
-    
-
-    def _return_403(self) -> None:
-        self.write_response_line(403)
-        self.write_headers()
 
 
 
