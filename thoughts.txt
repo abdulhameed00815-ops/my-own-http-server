@@ -1,1 +1,1 @@
-ok, so currently i am copying the code from a tutorial, i ve been asking chatgpt to make me understand every single line, soon i ll be ditching chatgpt when i know how everything works and start adding my own features like making the server accept more request methods and parse request data and make a accept queue and do concurrent shit and its gonna be awesome!
+ok, so rn i am working on making my server accept post requests, still have to parse different kinds of request bodies first.
