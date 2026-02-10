@@ -1,5 +1,12 @@
 import socket
+import json
 import os
+import io
+import logging
+from http import HTTPStatus
+
+
+logger = logging.getLogger(__name__)
 
 
 class PicoHTTPRequestHandler():
@@ -9,7 +16,7 @@ class PicoHTTPRequestHandler():
         response_stream: io.BufferedIOBase,
     ):
         self.request_stream = request_stream
-        self.client = client
+        self.response_stream = response_stream
         self.command = ''
         self.path = ''
         self.request_headers = {}
@@ -20,7 +27,8 @@ class PicoHTTPRequestHandler():
         }
         self.request_body = ''
         self.parser()
-        if self.path_validator():
+        self.is_dynamic_request = False
+        if self.request_classifier():
             self.handle()
 
 
@@ -55,24 +63,19 @@ class PicoHTTPRequestHandler():
         elif content_type == "application/json":
             content_length = int(self.request_headers.get('Content-Length', 0))
             if content_length > 0:
-                request_body = self.request_stream.read(content_length)
-                self.request_body = {}
-                json_value = request_body.lstrip("{").split(": ", 1).rstrip("}")
-                self.request_body[json_value[0]] = json_value[1].rstrip(",")
-
+                body_json_string = self.request_stream.read(content_length)
+                self.request_body = json.loads(body_json_string)
 
         logger.info(self.request_body)
 
 
-    def path_validator(self) -> None:
-        if not self._validate_path():
+    def request_classifier(self) -> None:
+        if not self._classify_request():
             return self._return_404()
         else:
-            self.method_validator()
+            self.handle()
 
-    
-
-    def _validate_path(self) -> bool:
+    def _classify_request(self) -> bool:
         #the line below joins the current working directory (where the server runs) and the absolute path of the request.
         self.path = os.path.join(os.getcwd(), self.path.lstrip('/'))
         if os.path.isdir(self.path):
@@ -81,7 +84,7 @@ class PicoHTTPRequestHandler():
             pass
 
         if not os.path.exists(self.path):
-            return False
+            self.is_dynamic_request = True
 
         return True
 
@@ -114,13 +117,18 @@ class PicoHTTPRequestHandler():
 
 
     def handle_GET(self) -> None:
-        self.handle_HEAD()
+        if not self.is_dynamic_request:
+            self.handle_HEAD()
+            with open(self.path, 'rb') as f:
+                body = f.read()
 
-        with open(self.path, 'rb') as f:
-            body = f.read()
-
-        self.response_stream.write(body)
-        self.response_stream.flush()
+            self.response_stream.write(body)
+            self.response_stream.flush()
+        else:
+            self.handle_HEAD()
+            self.response_stream.write(b'this is a generic response from the server')
+            self.response_stream.flush()
+                
 
 
     def handle_POST(self) -> None:
@@ -128,13 +136,23 @@ class PicoHTTPRequestHandler():
 
 
     def handle_HEAD(self) -> None:
-        self.write_response_line(200)
-        self.write_headers(
-                **{
-                    "Content-Length": os.path.getsize(self.path)
-                }
-        )
-        self.response_stream.flush()
+        self._write_response_line(200)
+
+        if not self.is_dynamic_request:
+            self._write_headers(
+                    **{
+                        "Content-Length": os.path.getsize(self.path)
+                    }
+            )
+            self.response_stream.flush()
+        else:
+            self._write_headers(
+                    **{
+                        "Content-Length": 42
+                    }
+            )
+            self.response_stream.flush()
+            
 
 
     def _write_response_line(self, status_code: int) -> None:
@@ -185,7 +203,7 @@ class PicoTCPServer:
                 logger.info(f'Closed connection from {addr}')
                 
 
-    def __enter__(self) -> PicoTCPServer:
+    def __enter__(self):
         return self
 
 
@@ -193,4 +211,5 @@ class PicoTCPServer:
         self.sock.close()
 
 
-
+server = PicoTCPServer(("127.0.0.1", 8000), PicoHTTPRequestHandler)
+server.serve_forever()
