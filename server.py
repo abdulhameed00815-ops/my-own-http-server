@@ -1,4 +1,5 @@
 import socket
+import sys
 import json
 import os
 import io
@@ -28,6 +29,7 @@ class PicoHTTPRequestHandler():
         self.request_body = ''
         self.parser()
         self.is_dynamic_request = False
+        self.server_response = b''
         if self.request_classifier():
             self.handle()
 
@@ -125,14 +127,26 @@ class PicoHTTPRequestHandler():
             self.response_stream.write(body)
             self.response_stream.flush()
         else:
+            server_response = b'this is a generic response from the server'
+            self.server_response = server_response
             self.handle_HEAD()
-            self.response_stream.write(b'this is a generic response from the server')
+            self.response_stream.write(self.server_response)
             self.response_stream.flush()
                 
 
-
     def handle_POST(self) -> None:
-        pass
+        server_response = f'{self.request_body}'.encode("utf-8")
+        self.server_response = server_response
+        content_length = sys.getsizeof(self.server_response)
+        self._write_response_line(200)
+        self._write_headers(
+                **{
+                    "Content-Type": self.request_headers.get("Content-Type"),
+                    "Content-Length": content_length
+                }
+        )
+        self.response_stream.write(self.server_response)
+        self.response_stream.flush()
 
 
     def handle_HEAD(self) -> None:
@@ -146,9 +160,10 @@ class PicoHTTPRequestHandler():
             )
             self.response_stream.flush()
         else:
+            content_length = sys.getsizeof(self.server_response)
             self._write_headers(
                     **{
-                        "Content-Length": 42
+                        "Content-Length": content_length
                     }
             )
             self.response_stream.flush()
