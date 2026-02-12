@@ -1,5 +1,5 @@
+import threading
 import socket
-import sys
 import json
 import os
 import io
@@ -137,7 +137,7 @@ class PicoHTTPRequestHandler():
     def handle_POST(self) -> None:
         server_response = f'{self.request_body}'.encode("utf-8")
         self.server_response = server_response
-        content_length = sys.getsizeof(self.server_response)
+        content_length = len(server_response)
         self._write_response_line(200)
         self._write_headers(
                 **{
@@ -155,12 +155,12 @@ class PicoHTTPRequestHandler():
         if not self.is_dynamic_request:
             self._write_headers(
                     **{
-                        "Content-Length": os.path.getsize(self.path)
+                        "Content-Length": len(self.path)
                     }
             )
             self.response_stream.flush()
         else:
-            content_length = sys.getsizeof(self.server_response)
+            content_length = len(self.server_response)
             self._write_headers(
                     **{
                         "Content-Length": content_length
@@ -188,6 +188,7 @@ class PicoHTTPRequestHandler():
 
         
 
+threads = []
 
 
 class PicoTCPServer:
@@ -205,17 +206,25 @@ class PicoTCPServer:
         self.sock.listen()
     def serve_forever(self) -> None:
         while True:
-            conn, addr = self.sock.accept()
+            def accept_request():
+                conn, addr = self.sock.accept()
 
-            with conn:
-                logger.info(f"Accepted connection from {addr}")
-                request_stream = conn.makefile("rb")
-                response_stream = conn.makefile("wb")
-                self.request_handler(
-                        request_stream=request_stream,
-                        response_stream=response_stream
-                )
-                logger.info(f'Closed connection from {addr}')
+                with conn:
+                    logger.info(f"Accepted connection from {addr}")
+                    request_stream = conn.makefile("rb")
+                    response_stream = conn.makefile("wb")
+                    self.request_handler(
+                            request_stream=request_stream,
+                            response_stream=response_stream
+                    )
+                    logger.info(f'Closed connection from {addr}')
+
+
+            t = threading.Thread(target=accept_request)
+            threads.append(t)
+            if len(threads) > 100:
+                break
+
                 
 
     def __enter__(self):
@@ -228,3 +237,11 @@ class PicoTCPServer:
 
 server = PicoTCPServer(("127.0.0.1", 8000), PicoHTTPRequestHandler)
 server.serve_forever()
+
+
+for t in threads:
+    t.start()
+
+
+for t in threads:
+    t.join()
