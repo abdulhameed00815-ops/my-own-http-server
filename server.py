@@ -5,9 +5,13 @@ import os
 import io
 import logging
 from http import HTTPStatus
+from queue import Queue
 
 
 logger = logging.getLogger(__name__)
+
+
+q = Queue(maxsize=99)
 
 
 class PicoHTTPRequestHandler():
@@ -204,10 +208,14 @@ class PicoTCPServer:
         self.sock.bind(socket_address)
 
         self.sock.listen()
+
+
     def serve_forever(self) -> None:
         while True:
             def accept_request():
                 conn, addr = self.sock.accept()
+
+                q.put(conn)
 
                 with conn:
                     logger.info(f"Accepted connection from {addr}")
@@ -225,6 +233,24 @@ class PicoTCPServer:
             if len(threads) > 100:
                 break
 
+
+    def worker(self):
+        while True:
+            conn, addr = q.get()
+
+            q.put(conn)
+
+            with conn:
+                logger.info(f"Accepted connection from {addr}")
+                request_stream = conn.makefile("rb")
+                response_stream = conn.makefile("wb")
+                self.request_handler(
+                        request_stream=request_stream,
+                        response_stream=response_stream
+                )
+                logger.info(f'Closed connection from {addr}')
+
+
                 
 
     def __enter__(self):
@@ -240,7 +266,8 @@ server.serve_forever()
 
 
 for t in threads:
-    t.start()
+    dequeue_task = q.get()
+    dequeue_task()
 
 
 for t in threads:
