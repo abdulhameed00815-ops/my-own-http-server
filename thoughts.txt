@@ -1,1 +1,1 @@
-ok, so rn i am working on making my server accept post requests, still have to parse different kinds of request bodies first.
+the threads should accept requests, once a connection happens the threads wait for queue to serve it.
