@@ -11,7 +11,7 @@ from queue import Queue
 logger = logging.getLogger(__name__)
 
 
-q = Queue(maxsize=99)
+q = Queue(maxsize=100)
 
 
 class PicoHTTPRequestHandler():
@@ -209,46 +209,34 @@ class PicoTCPServer:
 
         self.sock.listen()
 
-
+    #this function creates 100 workers to be on standby, waiting for the worker function to get a connection from the queue, it is also the function that enqueues incomming connections:)
     def serve_forever(self) -> None:
+        for _ in range(100):
+            t = threading.Thread(target=self.worker)
+            t.daemon = True
+            t.start()
+            print("thread started")
+
         while True:
-            def accept_request():
-                conn, addr = self.sock.accept()
+            conn, addr = self.sock.accept()
 
-                q.put(conn)
+            q.put((conn, addr))
+            print("accepted and enqueued conn and addr")
 
-                with conn:
-                    logger.info(f"Accepted connection from {addr}")
-                    request_stream = conn.makefile("rb")
-                    response_stream = conn.makefile("wb")
-                    self.request_handler(
-                            request_stream=request_stream,
-                            response_stream=response_stream
-                    )
-                    logger.info(f'Closed connection from {addr}')
-
-
-            t = threading.Thread(target=accept_request)
-            threads.append(t)
-            if len(threads) > 100:
-                break
 
 
     def worker(self):
         while True:
             conn, addr = q.get()
-
-            q.put(conn)
-
             with conn:
-                logger.info(f"Accepted connection from {addr}")
+                print(f"Accepted connection from {addr}")
                 request_stream = conn.makefile("rb")
                 response_stream = conn.makefile("wb")
                 self.request_handler(
                         request_stream=request_stream,
                         response_stream=response_stream
                 )
-                logger.info(f'Closed connection from {addr}')
+                print(f'Closed connection from {addr}')
 
 
                 
@@ -265,10 +253,3 @@ server = PicoTCPServer(("127.0.0.1", 8000), PicoHTTPRequestHandler)
 server.serve_forever()
 
 
-for t in threads:
-    dequeue_task = q.get()
-    dequeue_task()
-
-
-for t in threads:
-    t.join()
