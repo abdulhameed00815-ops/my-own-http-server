@@ -1,1 +1,2 @@
-the threads should accept requests, once a connection happens the threads wait for queue to serve it.
+ok, so now my server uses async io to handle requests with concurrency, i stress tested it and it handled a 1000 requests with 500 concurrent ones, once i up the number to 10000 and 500 concurrent the server starts to suffer from partial reads bec of stress, but for me this is pretty acceptable performance.
+
