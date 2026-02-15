@@ -1,4 +1,4 @@
-import threading
+import asyncio
 import socket
 import json
 import os
@@ -210,33 +210,33 @@ class PicoTCPServer:
         self.sock.listen()
 
     #this function creates 100 workers to be on standby, waiting for the worker function to get a connection from the queue, it is also the function that enqueues incomming connections:)
-    def serve_forever(self) -> None:
-        for _ in range(100):
-            t = threading.Thread(target=self.worker)
-            t.daemon = True
-            t.start()
-            print("thread started")
-
+    async def serve_forever(self) -> None:
         while True:
             conn, addr = self.sock.accept()
 
             q.put((conn, addr))
             print("accepted and enqueued conn and addr")
+            await self.main()
 
 
+    async def main(self):
+        handle_connection = asyncio.create_task(self.worker())
+        await handle_connection
 
-    def worker(self):
-        while True:
-            conn, addr = q.get()
-            with conn:
-                print(f"Accepted connection from {addr}")
-                request_stream = conn.makefile("rb")
-                response_stream = conn.makefile("wb")
-                self.request_handler(
-                        request_stream=request_stream,
-                        response_stream=response_stream
-                )
-                print(f'Closed connection from {addr}')
+
+    async def worker(self):
+        conn, addr = q.get()
+        with conn:
+            print(f"Accepted connection from {addr}")
+            request_stream = conn.makefile("rb")
+            response_stream = conn.makefile("wb")
+            self.request_handler(
+                    request_stream=request_stream,
+                    response_stream=response_stream
+            )
+            print(f'Closed connection from {addr}')
+
+
 
 
                 
@@ -250,6 +250,6 @@ class PicoTCPServer:
 
 
 server = PicoTCPServer(("127.0.0.1", 8000), PicoHTTPRequestHandler)
-server.serve_forever()
+asyncio.run(server.serve_forever())
 
 
