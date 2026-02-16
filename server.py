@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 q = Queue(maxsize=100)
 
 
+
+
+
+
 class PicoHTTPRequestHandler():
     def __init__(
         self,
@@ -34,8 +38,17 @@ class PicoHTTPRequestHandler():
         self.parser()
         self.is_dynamic_request = False
         self.server_response = b''
-        if self.request_classifier():
+        self.user_created_endpoints = []
+
+        if self.is_static_file_request():
             self.handle()
+        else:
+            self.is_dynamic_request = True
+
+        if self.validate_dynamic_request():
+            self.handle_endpoint_request()
+        else:
+            self._return_404()
 
 
     def parser(self) -> None:
@@ -75,14 +88,7 @@ class PicoHTTPRequestHandler():
         logger.info(self.request_body)
 
 
-    def request_classifier(self) -> None:
-        if not self._classify_request():
-            return self._return_404()
-        else:
-            self.handle()
-
-    def _classify_request(self) -> bool:
-        #the line below joins the current working directory (where the server runs) and the absolute path of the request.
+    def is_static_file_request(self) -> None:
         self.path = os.path.join(os.getcwd(), self.path.lstrip('/'))
         if os.path.isdir(self.path):
             self.path = os.path.join(self.path, 'index.html')
@@ -90,14 +96,34 @@ class PicoHTTPRequestHandler():
             pass
 
         if not os.path.exists(self.path):
-            self.is_dynamic_request = True
+            return False
+        
+        self.handle()
 
-        return True
+
+    def validate_dynamic_request(self) -> bool:
+        #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created. 
+        endpoint_url_exists = any(endpoint['endpoint_url'] == f"http://127.0.0.1:8000/{self.path}" for endpoint in self.user_created_endpoints)
+        for endpoint in self.user_created_endpoints:
+            if endpoint.get("endpoint_url") == f"http://127.0.0.1:8000/{self.path}":
+                endpoint_method = endpoint.get("endpoint_method")
+        if endpoint_url_exists and endpoint_method == self.command:
+            return True
+        else:
+            return False
+
+    
+    def create_custom_endpoint(self,endpoint_method, endpoint_url, endpoint_function):
+        new_endpoint = {
+                "endpoint_url": endpoint_url,
+                "endpoint_function": endpoint_function,
+        }
+        self.user_created_endpoints.append(new_endpoint)
 
 
     def _return_404(self) -> None:
-        self.write_response_line(404)
-        self.write_headers()
+        self._write_response_line(404)
+        self._write_headers()
         self.response_stream.flush()
 
 
@@ -110,6 +136,18 @@ class PicoHTTPRequestHandler():
     def _return_403(self) -> None:
         self.write_response_line(403)
         self.write_headers()
+        self.response_stream.flush()
+
+
+    def handle_endpoint_request(self):
+        for endpoint in self.user_created_endpoints:
+            if endpoint.get("endpoint_url") == f"http://127.0.0.1:8000/{self.path}":
+                endpoint_function_string = endpoint.get("endpoint")
+
+        result = eval(endpoint_function_string).encode("utf-8")
+        self.server_response = result
+        self.handle_HEAD()
+        self.response_stream.write(self.server_response)
         self.response_stream.flush()
 
 
