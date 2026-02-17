@@ -1,3 +1,4 @@
+import json
 import asyncio
 import socket
 import json
@@ -38,14 +39,15 @@ class PicoHTTPRequestHandler():
         self.parser()
         self.is_dynamic_request = False
         self.server_response = b''
-        self.user_created_endpoints = []
 
         if self.is_static_file_request():
             self.handle()
         else:
             self.is_dynamic_request = True
+            print("request type: dynamic")
 
         if self.validate_dynamic_request():
+            print("valid request")
             self.handle_endpoint_request()
         else:
             self._return_404()
@@ -88,7 +90,7 @@ class PicoHTTPRequestHandler():
         logger.info(self.request_body)
 
 
-    def is_static_file_request(self) -> None:
+    def is_static_file_request(self) -> bool:
         self.path = os.path.join(os.getcwd(), self.path.lstrip('/'))
         if os.path.isdir(self.path):
             self.path = os.path.join(self.path, 'index.html')
@@ -101,26 +103,31 @@ class PicoHTTPRequestHandler():
         self.handle()
 
 
+    def create_custom_endpoint(self, endpoint_method, endpoint_url, endpoint_function) -> None:
+        new_endpoint = {
+            "endpoint_method": endpoint_method,
+            "endpoint_url": endpoint_url,
+            "endpoint_function": endpoint_function,
+        }
+        with open("endpoints.json", "w") as file:
+            json.dump(new_endpoint, file, indent=4)
+
+
     def validate_dynamic_request(self) -> bool:
         #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created. 
-        endpoint_url_exists = any(endpoint['endpoint_url'] == f"http://127.0.0.1:8000/{self.path}" for endpoint in self.user_created_endpoints)
-        for endpoint in self.user_created_endpoints:
-            if endpoint.get("endpoint_url") == f"http://127.0.0.1:8000/{self.path}":
-                endpoint_method = endpoint.get("endpoint_method")
-        if endpoint_url_exists and endpoint_method == self.command:
+        with open("endpoints.json", "r") as file:
+            json_value = json.load(file)
+            for endpoint in json_value["endpoints"]:
+                if endpoint.get("endpoint_url") == f"http://127.0.0.1:8000/{self.path}":
+                    endpoint_method = endpoint.get("endpoint_function")
+        if endpoint_method == self.command:
+            print("valid request")
             return True
         else:
+            print("invalid request!")
             return False
 
     
-    def create_custom_endpoint(self,endpoint_method, endpoint_url, endpoint_function):
-        new_endpoint = {
-                "endpoint_url": endpoint_url,
-                "endpoint_function": endpoint_function,
-        }
-        self.user_created_endpoints.append(new_endpoint)
-
-
     def _return_404(self) -> None:
         self._write_response_line(404)
         self._write_headers()
@@ -139,16 +146,17 @@ class PicoHTTPRequestHandler():
         self.response_stream.flush()
 
 
-    def handle_endpoint_request(self):
-        for endpoint in self.user_created_endpoints:
-            if endpoint.get("endpoint_url") == f"http://127.0.0.1:8000/{self.path}":
-                endpoint_function_string = endpoint.get("endpoint")
-
-        result = eval(endpoint_function_string).encode("utf-8")
-        self.server_response = result
-        self.handle_HEAD()
-        self.response_stream.write(self.server_response)
-        self.response_stream.flush()
+    def handle_endpoint_request(self) -> None:
+        with open("endpoints.json", "r") as file:
+            json_value = json.load(file)
+            for endpoint in json_value["endpoints"]:
+                if endpoint.get("endpoint_url") == f"http://127.0.0.1:8000/{self.path}":
+                    result = endpoint.get("endpoint_function")
+            result = eval(endpoint_function_string).encode("utf-8")
+            self.server_response = result
+            self.handle_HEAD()
+            self.response_stream.write(self.server_response)
+            self.response_stream.flush()
 
 
     def handle(self) -> None:
