@@ -20,7 +20,7 @@ q = Queue(maxsize=100)
 
 
 
-class PicoHTTPRequestHandler():
+class PicoHTTPRequestHandler(PicoTCPServer):
     def __init__(
         self,
         request_stream: io.BufferedIOBase,
@@ -142,18 +142,18 @@ class PicoHTTPRequestHandler():
         self.response_stream.flush()
 
 
+    #this function is unfinished
     def handle_endpoint_request(self) -> None:
-        with open("endpoints.json", "r") as file:
-            data = json.load(file)
-        for endpoint in data["endpoints"]:
-            absolute_path = Path(self.path).name
-            if endpoint.get("endpoint_url") == f"http://127.0.0.1:8000/{absolute_path}":
-                result = endpoint["endpoint_function"]
-                server_response = eval(result).encode("utf-8")
-                self.server_response = server_response
-                self.handle_HEAD()
-                self.response_stream.write(self.server_response)
-                self.response_stream.flush()
+        function_args = []
+        absolute_path = self.path.lstrip("http://127.0.0.1:8000/")
+        for path in self.absolute_path.split("/")
+            if not path in self.constant_paths:
+                function_args.append(path)
+        server_response = self.endpoint_function().encode("utf-8")
+        self.server_response = server_response
+        self.handle_HEAD()
+        self.response_stream.write(self.server_response)
+        self.response_stream.flush()
 
 
     def handle(self) -> None:
@@ -242,6 +242,10 @@ class PicoTCPServer():
     ) -> None:
         self.request_handler = request_handler
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.endpoint_method = ''
+        self.endpoint_url = ''
+        self.constant_paths = []
+        self.endpoint_function = None
         #the line below just enables us to restart the server with the same address without getting address already in use error.
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(socket_address)
@@ -250,36 +254,21 @@ class PicoTCPServer():
 
 
     def create_custom_endpoint(self, endpoint_method, endpoint_url, endpoint_function) -> None:
-        new_endpoint = {
-            "endpoint_method": endpoint_method,
-            "endpoint_url": endpoint_url,
-            "endpoint_function": endpoint_function,
-        }
-
-        file_path = "endpoints.json"
-
-        with open(file_path, "r") as file:
-            data = json.load(file)
-
-        if not data["endpoints"]:
-            data["endpoints"].append(new_endpoint)
-
-            with open(file_path, "w") as file:
-                json.dump(data, file, indent=4)
-
-
-        for endpoint in data["endpoints"]:
-            absolute_path = Path(endpoint_url).name
-            if not endpoint["endpoint_url"] == f"http://127.0.0.1:8000/{absolute_path}":
-                data["endpoints"].append(new_endpoint)
-
-                with open(file_path, "w") as file:
-                    json.dump(data, file, indent=4)
+        def wrapper(*args, **kwargs):
+            self.endpoint_method = endpoint_method
+            self.endpoint_url = endpoint_url
+            constant_paths = []
+            url_paths = endpoint_url.split("/")
+            for path in url_paths:
+                if not path.startswith("{") and  not path.endswith("}"):
+                   constant_paths.append(path)
+            self.constant_paths = constant_paths
+            self.endpoint_function = endpoint_function
+        return wrapper
 
 
 
 
-    #this function creates 100 workers to be on standby, waiting for the worker function to get a connection from the queue, it is also the function that enqueues incomming connections:)
     async def serve_forever(self) -> None:
         while True:
             conn, addr = self.sock.accept()
