@@ -1,3 +1,4 @@
+import functools
 import json
 from pathlib import Path
 import asyncio
@@ -10,17 +11,15 @@ from http import HTTPStatus
 from queue import Queue
 
 
-logger = logging.getLogger(__name__)
-
-
 q = Queue(maxsize=100)
 
+def function():
+    return "100"
+
+endpoint_function = function
 
 
-
-
-
-class PicoHTTPRequestHandler(PicoTCPServer):
+class PicoHTTPRequestHandler():
     def __init__(
         self,
         request_stream: io.BufferedIOBase,
@@ -40,6 +39,7 @@ class PicoHTTPRequestHandler(PicoTCPServer):
         self.parser()
         self.is_dynamic_request = False
         self.server_response = b''
+        self.endpoint_function = endpoint_function
 
         if self.is_static_file_request():
             self.handle()
@@ -49,6 +49,7 @@ class PicoHTTPRequestHandler(PicoTCPServer):
 
         if self.validate_dynamic_request():
             print("valid request")
+            print(self.endpoint_function)
             self.handle_endpoint_request()
         else:
             self._return_404()
@@ -59,10 +60,8 @@ class PicoHTTPRequestHandler(PicoTCPServer):
 
 
     def _parse_request(self):
-        logger.info("Parsing request line")
         requestline = self.request_stream.readline().decode()
         requestline = requestline.rstrip("\r\n")
-        logger.info(requestline)
 
         self.command = requestline.split(' ')[0]
         self.path = requestline.split(' ')[1]
@@ -73,7 +72,6 @@ class PicoHTTPRequestHandler(PicoTCPServer):
             key, value = line.rstrip('\r\n').split(': ', 1)
             self.request_headers[key] = value
             line = self.request_stream.readline().decode()
-        logger.info(self.request_headers)
 
         content_type = self.request_headers.get('Content-Type', None)
 
@@ -88,7 +86,6 @@ class PicoHTTPRequestHandler(PicoTCPServer):
                 body_json_string = self.request_stream.read(content_length)
                 self.request_body = json.loads(body_json_string)
 
-        logger.info(self.request_body)
 
 
     def is_static_file_request(self) -> bool:
@@ -100,30 +97,14 @@ class PicoHTTPRequestHandler(PicoTCPServer):
 
         if not os.path.exists(self.path):
             return False
-        
+
         self.handle()
 
 
     def validate_dynamic_request(self) -> bool:
-        #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created. 
-        file_path = "endpoints.json"
-        
-        with open(file_path, "r") as file:
-            data = json.load(file)
+        #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
+        return True
 
-        for endpoint in data["endpoints"]:
-            absolute_path = Path(self.path).name
-            if endpoint["endpoint_url"] == f"http://127.0.0.1:8000/{absolute_path}":
-                endpoint_method = endpoint["endpoint_method"]
-
-                if endpoint_method == self.command:
-                    print("valid request")
-                    return True
-                else:
-                    print("invalid request!")
-                    return False
-
-    
     def _return_404(self) -> None:
         self._write_response_line(404)
         self._write_headers()
@@ -134,7 +115,7 @@ class PicoHTTPRequestHandler(PicoTCPServer):
         self.write_response_line(405)
         self.write_headers()
         self.response_stream.flush()
-    
+
 
     def _return_403(self) -> None:
         self.write_response_line(403)
@@ -145,9 +126,10 @@ class PicoHTTPRequestHandler(PicoTCPServer):
     #this function is unfinished
     def handle_endpoint_request(self) -> None:
         function_args = []
+        constant_paths = []
         absolute_path = self.path.lstrip("http://127.0.0.1:8000/")
-        for path in self.absolute_path.split("/")
-            if not path in self.constant_paths:
+        for path in absolute_path.split("/"):
+            if not path in constant_paths:
                 function_args.append(path)
         server_response = self.endpoint_function().encode("utf-8")
         self.server_response = server_response
@@ -179,7 +161,7 @@ class PicoHTTPRequestHandler(PicoTCPServer):
             self.handle_HEAD()
             self.response_stream.write(self.server_response)
             self.response_stream.flush()
-                
+
 
     def handle_POST(self) -> None:
         server_response = f'{self.request_body}'.encode("utf-8")
@@ -214,12 +196,11 @@ class PicoHTTPRequestHandler(PicoTCPServer):
                     }
             )
             self.response_stream.flush()
-            
+
 
 
     def _write_response_line(self, status_code: int) -> None:
         response_line = f'HTTP/1.1 {status_code} {HTTPStatus(status_code).phrase} \r\n'
-        logger.info(response_line.encode())
         self.response_stream.write(response_line.encode())
 
 
@@ -229,7 +210,6 @@ class PicoHTTPRequestHandler(PicoTCPServer):
         header_lines = '\r\n'.join(
                 f'{k}: {v}' for k, v in headers_copy.items()
         )
-        logger.info(header_lines.encode())
         self.response_stream.write(header_lines.encode())
         self.response_stream.write(b'\r\n\r\n')
 
@@ -253,18 +233,21 @@ class PicoTCPServer():
         self.sock.listen()
 
 
-    def create_custom_endpoint(self, endpoint_method, endpoint_url, endpoint_function) -> None:
-        def wrapper(*args, **kwargs):
-            self.endpoint_method = endpoint_method
-            self.endpoint_url = endpoint_url
-            constant_paths = []
-            url_paths = endpoint_url.split("/")
-            for path in url_paths:
-                if not path.startswith("{") and  not path.endswith("}"):
-                   constant_paths.append(path)
-            self.constant_paths = constant_paths
-            self.endpoint_function = endpoint_function
-        return wrapper
+    def create_custom_endpoint(self, endpoint_method, endpoint_url):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                self.endpoint_method = endpoint_method
+                self.endpoint_url = endpoint_url
+                constant_paths = []
+                url_paths = endpoint_url.split("/")
+                for path in url_paths:
+                    if not path.startswith("{") and  not path.endswith("}"):
+                       constant_paths.append(path)
+                self.constant_paths = constant_paths
+                endpoint_function = func
+            return wrapper
+        return decorator
 
 
 
