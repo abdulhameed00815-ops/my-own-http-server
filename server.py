@@ -13,11 +13,6 @@ from queue import Queue
 
 q = Queue(maxsize=100)
 
-def function():
-    return "100"
-
-endpoint_function = function
-
 
 class PicoHTTPRequestHandler():
     def __init__(
@@ -103,7 +98,7 @@ class PicoHTTPRequestHandler():
 
     def validate_dynamic_request(self) -> bool:
         #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
-        return True
+        if endpoint_method = 
 
     def _return_404(self) -> None:
         self._write_response_line(404)
@@ -125,13 +120,7 @@ class PicoHTTPRequestHandler():
 
     #this function is unfinished
     def handle_endpoint_request(self) -> None:
-        function_args = []
-        constant_paths = []
-        absolute_path = self.path.lstrip("http://127.0.0.1:8000/")
-        for path in absolute_path.split("/"):
-            if not path in constant_paths:
-                function_args.append(path)
-        server_response = self.endpoint_function().encode("utf-8")
+        server_response = endpoint_function().encode("utf-8")
         self.server_response = server_response
         self.handle_HEAD()
         self.response_stream.write(self.server_response)
@@ -198,7 +187,6 @@ class PicoHTTPRequestHandler():
             self.response_stream.flush()
 
 
-
     def _write_response_line(self, status_code: int) -> None:
         response_line = f'HTTP/1.1 {status_code} {HTTPStatus(status_code).phrase} \r\n'
         self.response_stream.write(response_line.encode())
@@ -222,10 +210,6 @@ class PicoTCPServer():
     ) -> None:
         self.request_handler = request_handler
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.endpoint_method = ''
-        self.endpoint_url = ''
-        self.constant_paths = []
-        self.endpoint_function = None
         #the line below just enables us to restart the server with the same address without getting address already in use error.
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(socket_address)
@@ -237,19 +221,11 @@ class PicoTCPServer():
         def decorator(func):
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
-                self.endpoint_method = endpoint_method
-                self.endpoint_url = endpoint_url
-                constant_paths = []
-                url_paths = endpoint_url.split("/")
-                for path in url_paths:
-                    if not path.startswith("{") and  not path.endswith("}"):
-                       constant_paths.append(path)
-                self.constant_paths = constant_paths
                 endpoint_function = func
+                endpoint_method = endpoint_method
+                endpoint_url = enpdoint_url
             return wrapper
         return decorator
-
-
 
 
     async def serve_forever(self) -> None:
@@ -278,10 +254,6 @@ class PicoTCPServer():
             )
             print(f'Closed connection from {addr}')
 
-
-
-
-                
 
     def __enter__(self):
         return self
