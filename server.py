@@ -14,6 +14,21 @@ from queue import Queue
 q = Queue(maxsize=100)
 
 
+routes = {}
+
+
+class RoutesHandler():
+    def __init__(self):
+        pass
+
+
+    def create_custom_endpoint(self, endpoint_method, endpoint_url, routes):
+        def decorator(func):
+                routes[f"{endpoint_method}{endpoint_url}"] = func
+                return func
+        return decorator
+
+
 class PicoHTTPRequestHandler():
     def __init__(
         self,
@@ -34,7 +49,7 @@ class PicoHTTPRequestHandler():
         self.parser()
         self.is_dynamic_request = False
         self.server_response = b''
-        self.endpoint_function = endpoint_function
+        self.endpoint_function = None
 
         if self.is_static_file_request():
             self.handle()
@@ -98,7 +113,13 @@ class PicoHTTPRequestHandler():
 
     def validate_dynamic_request(self) -> bool:
         #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
-        if endpoint_method = 
+        url = Path(self.path).name
+        if f"{self.command}{url}" in routes:
+            self.endpoint_function = routes[f"{self.command}{self.path}"]
+            return True
+        else:
+            return False
+
 
     def _return_404(self) -> None:
         self._write_response_line(404)
@@ -120,7 +141,7 @@ class PicoHTTPRequestHandler():
 
     #this function is unfinished
     def handle_endpoint_request(self) -> None:
-        server_response = endpoint_function().encode("utf-8")
+        server_response = self.endpoint_function().encode("utf-8")
         self.server_response = server_response
         self.handle_HEAD()
         self.response_stream.write(self.server_response)
@@ -215,17 +236,6 @@ class PicoTCPServer():
         self.sock.bind(socket_address)
 
         self.sock.listen()
-
-
-    def create_custom_endpoint(self, endpoint_method, endpoint_url):
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                endpoint_function = func
-                endpoint_method = endpoint_method
-                endpoint_url = enpdoint_url
-            return wrapper
-        return decorator
 
 
     async def serve_forever(self) -> None:
