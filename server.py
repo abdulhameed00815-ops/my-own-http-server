@@ -19,13 +19,15 @@ routes = {}
 
 class RoutesHandler():
     def __init__(self):
-        pass
+        self.routes = {}
 
 
     def create_custom_endpoint(self, endpoint_method, endpoint_url, routes):
         def decorator(func):
-                routes[f"{endpoint_method}{endpoint_url}"] = func
-                return func
+            self.routes[f"{endpoint_method}{endpoint_url}"] = func
+            routes = self.routes
+            print(routes)
+            return func
         return decorator
 
 
@@ -34,6 +36,7 @@ class PicoHTTPRequestHandler():
         self,
         request_stream: io.BufferedIOBase,
         response_stream: io.BufferedIOBase,
+        routes: dict[str, callable],
     ):
         self.request_stream = request_stream
         self.response_stream = response_stream
@@ -49,6 +52,7 @@ class PicoHTTPRequestHandler():
         self.parser()
         self.is_dynamic_request = False
         self.server_response = b''
+        self.routes = routes
         self.endpoint_function = None
 
         if self.is_static_file_request():
@@ -114,8 +118,9 @@ class PicoHTTPRequestHandler():
     def validate_dynamic_request(self) -> bool:
         #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
         url = Path(self.path).name
-        if f"{self.command}{url}" in routes:
-            self.endpoint_function = routes[f"{self.command}{self.path}"]
+        print(self.routes)
+        if f"{self.command}{url}" in self.routes:
+            self.endpoint_function = self.routes[f"{self.command}{url}"]
             return True
         else:
             return False
@@ -227,7 +232,8 @@ class PicoTCPServer():
     def __init__(
             self,
             socket_address: tuple[str, int],
-            request_handler: PicoHTTPRequestHandler
+            request_handler: PicoHTTPRequestHandler,
+            routes: dict[str, callable]
     ) -> None:
         self.request_handler = request_handler
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -260,7 +266,8 @@ class PicoTCPServer():
             response_stream = conn.makefile("wb")
             self.request_handler(
                     request_stream=request_stream,
-                    response_stream=response_stream
+                    response_stream=response_stream,
+                    routes=routes
             )
             print(f'Closed connection from {addr}')
 
