@@ -9,6 +9,7 @@ import io
 import logging
 from http import HTTPStatus
 from queue import Queue
+import inspect
 
 
 q = Queue(maxsize=100)
@@ -22,11 +23,11 @@ class RoutesHandler():
         self.routes = {}
 
 
-    def create_custom_endpoint(self, endpoint_method, endpoint_url, routes):
+    def create_custom_endpoint(self, endpoint_method, endpoint_url):
         def decorator(func):
-            self.routes[f"{endpoint_method}{endpoint_url}"] = func
-            routes = self.routes
-            print(routes)
+            p_posix = Path(endpoint_url)
+            route_name = p_posix.parts[1]
+            self.routes[f"{endpoint_method}{route_name}"] = func
             return func
         return decorator
 
@@ -53,6 +54,7 @@ class PicoHTTPRequestHandler():
         self.is_dynamic_request = False
         self.server_response = b''
         self.routes = routes
+        self.route_name = ''
         self.endpoint_function = None
 
         if self.is_static_file_request():
@@ -117,10 +119,11 @@ class PicoHTTPRequestHandler():
 
     def validate_dynamic_request(self) -> bool:
         #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
-        url = Path(self.path).name
-        print(self.routes)
-        if f"{self.command}{url}" in self.routes:
-            self.endpoint_function = self.routes[f"{self.command}{url}"]
+        url = self.path.lstrip("/home/abdo/Documents/my-own-http-server/")
+        p_posix = Path(url)
+        route_name = p_posix.parts[1]
+        if f"{self.command}{route_name}" in self.routes:
+            self.endpoint_function = self.routes[f"{self.command}{route_name}"]
             return True
         else:
             return False
@@ -146,11 +149,31 @@ class PicoHTTPRequestHandler():
 
     #this function is unfinished
     def handle_endpoint_request(self) -> None:
-        server_response = self.endpoint_function().encode("utf-8")
-        self.server_response = server_response
-        self.handle_HEAD()
-        self.response_stream.write(self.server_response)
-        self.response_stream.flush()
+        request_path_params = self.request_path_params()
+        if not request_path_params == []:
+            try:
+                for component in len(request_path_params):
+                    
+                server_response = self.endpoint_function()
+                response_type = type(server_response)
+                if response_type == str:
+                    server_response = self.endpoint_function().encode("utf-8")
+                elif response_type == int:
+                    server_response = str(self.endpoint_function()).encode("utf-8")
+                self.server_response = server_response
+                self.handle_HEAD()
+                self.response_stream.write(self.server_response)
+                self.response_stream.flush()
+
+
+   def request_path_params(self) -> list:
+        request_params = []
+        request_path = self.path.lstrip("/home/abdo/Documents/my-own-http-server/")
+        components = request_path.split("/") 
+        for component in components:
+            if not component == self.route_name:
+                request_params.append(component)
+        return request_params
 
 
     def handle(self) -> None:
@@ -235,6 +258,7 @@ class PicoTCPServer():
             request_handler: PicoHTTPRequestHandler,
             routes: dict[str, callable]
     ) -> None:
+        self.routes = routes
         self.request_handler = request_handler
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #the line below just enables us to restart the server with the same address without getting address already in use error.
@@ -267,7 +291,7 @@ class PicoTCPServer():
             self.request_handler(
                     request_stream=request_stream,
                     response_stream=response_stream,
-                    routes=routes
+                    routes=self.routes
             )
             print(f'Closed connection from {addr}')
 
