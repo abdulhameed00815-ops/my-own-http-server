@@ -21,13 +21,18 @@ routes = {}
 class RoutesHandler():
     def __init__(self):
         self.routes = {}
+        self.func_sig = None
 
 
     def create_custom_endpoint(self, endpoint_method, endpoint_url):
         def decorator(func):
             p_posix = Path(endpoint_url)
-            route_name = p_posix.parts[1]
+            route_name = p_posix.parts[0]
+            sig = inspect.signature(func)
+            self.func_sig = sig
             self.routes[f"{endpoint_method}{route_name}"] = func
+            self.routes[f"sig{endpoint_method}{route_name}"] = sig
+            self.routes[f"schema{endpoint_method}{route_name}"] = endpoint_method.replace(f"{route_name}/", "")
             return func
         return decorator
 
@@ -119,11 +124,12 @@ class PicoHTTPRequestHandler():
 
     def validate_dynamic_request(self) -> bool:
         #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
-        url = self.path.lstrip("/home/abdo/Documents/my-own-http-server/")
+        url = self.path.replace("/home/abdo/Documents/my-own-http-server/", "")
         p_posix = Path(url)
-        route_name = p_posix.parts[1]
-        if f"{self.command}{route_name}" in self.routes:
-            self.endpoint_function = self.routes[f"{self.command}{route_name}"]
+        request_route_name = p_posix.parts[0]
+        if f"{self.command}{request_route_name}" in self.routes:
+            self.endpoint_function = self.routes[f"{self.command}{request_route_name}"]
+            self.route_name = request_route_name
             return True
         else:
             return False
@@ -141,38 +147,40 @@ class PicoHTTPRequestHandler():
         self.response_stream.flush()
 
 
+    def _return_400(self) -> None:
+        self.write_response_line(400)
+        self.write_headers()
+        self.response_stream.flush()
+
+
     def _return_403(self) -> None:
         self.write_response_line(403)
         self.write_headers()
         self.response_stream.flush()
 
 
-    #this function is unfinished
     def handle_endpoint_request(self) -> None:
         request_path_params = self.request_path_params()
-        if not request_path_params == []:
-            try:
-                for component in len(request_path_params):
-                    
-                server_response = self.endpoint_function()
-                response_type = type(server_response)
-                if response_type == str:
-                    server_response = self.endpoint_function().encode("utf-8")
-                elif response_type == int:
-                    server_response = str(self.endpoint_function()).encode("utf-8")
-                self.server_response = server_response
-                self.handle_HEAD()
-                self.response_stream.write(self.server_response)
-                self.response_stream.flush()
+
+        params = []
+        for component in request_path_params:
+            params.append(component)  
+
+        server_response = str(self.endpoint_function(*params)).encode("utf-8")
+
+        self.server_response = server_response
+        self.handle_HEAD()
+        self.response_stream.write(self.server_response)
+        self.response_stream.flush()
 
 
-   def request_path_params(self) -> list:
+    def request_path_params(self) -> list:
         request_params = []
-        request_path = self.path.lstrip("/home/abdo/Documents/my-own-http-server/")
+        request_path = self.path.replace("/home/abdo/Documents/my-own-http-server/", "")
         components = request_path.split("/") 
         for component in components:
-            if not component == self.route_name:
-                request_params.append(component)
+           if not component == self.route_name:
+               request_params.append(component)
         return request_params
 
 
