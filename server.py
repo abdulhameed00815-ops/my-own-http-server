@@ -32,7 +32,7 @@ class RoutesHandler():
             self.func_sig = sig
             self.routes[f"{endpoint_method}{route_name}"] = func
             self.routes[f"sig{endpoint_method}{route_name}"] = sig
-            self.routes[f"schema{endpoint_method}{route_name}"] = endpoint_method.replace(f"{route_name}/", "")
+            self.routes[f"paramschema{endpoint_method}{route_name}"] = endpoint_url.replace(f"{route_name}/", "")
             return func
         return decorator
 
@@ -162,11 +162,47 @@ class PicoHTTPRequestHandler():
     def handle_endpoint_request(self) -> None:
         request_path_params = self.request_path_params()
 
-        params = []
+        request_params = []
         for component in request_path_params:
-            params.append(component)  
+            request_params.append(component)  
 
-        server_response = str(self.endpoint_function(*params)).encode("utf-8")
+        param_signatures = []
+        sig = self.routes[f"sig{self.command}{self.route_name}"]
+
+        for name, param in sig.parameters.items():
+            parameter = {
+                    "name": name,
+                    "type": param.annotation,
+            }
+            param_signatures.append(parameter)
+
+        print(self.routes)
+
+        paramschema = self.routes[f"paramschema{self.command}{self.route_name}"]
+
+        paramschema_list = paramschema.split("/") 
+
+        ordered_param_name_to_types = []
+
+        print(paramschema_list)
+
+        for param in paramschema_list:
+            param = param.lstrip("{").rstrip("}")
+            for param_signature in param_signatures:
+                if param_signature["name"] == param:
+                    param_name_to_type = {
+                            "name": param,
+                            "type": param_signature["type"],
+                    }
+                    ordered_param_name_to_types.append(param_name_to_type)
+
+        print(len(request_params))
+        print(len(ordered_param_name_to_types))
+        for index, request_param in enumerate(request_params):
+            target_type = ordered_param_name_to_types[index]['type']
+            request_param = target_type(request_param)
+
+        server_response = str(self.endpoint_function(*request_params)).encode("utf-8")
 
         self.server_response = server_response
         self.handle_HEAD()
