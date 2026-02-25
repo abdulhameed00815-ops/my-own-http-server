@@ -5,14 +5,10 @@ import asyncio
 app = RoutesHandler()
 
 
-@app.create_custom_endpoint(endpoint_method="GET", endpoint_url="multiply/{x}/{y}")
-def function(x: int, y: int):
-    return x * y
-
-
-@app.create_custom_endpoint(endpoint_method="GET", endpoint_url="mix/{x}/{y}")
-def function(x: str, y: str):
-    return x + y
+@app.create_custom_endpoint(endpoint_method="GET", endpoint_url="message/{name}/{age}")
+def function(name: str, age: int):
+    message = f"{name} is {age} years old"
+    return message
 
 
 routes = app.routes
