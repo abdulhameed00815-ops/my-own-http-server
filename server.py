@@ -55,26 +55,15 @@ class PicoHTTPRequestHandler():
                 'Connection': 'close'
         }
         self.request_body = ''
-        self.parser()
         self.is_dynamic_request = False
         self.server_response = b''
         self.routes = routes
         self.route_name = ''
         self.endpoint_function = None
+        self.parser()
 
-        if self.is_static_file_request():
-            self.handle()
-        else:
-            self.is_dynamic_request = True
-            print("request type: dynamic")
-
-        if self.validate_dynamic_request():
-            print("valid request")
-            print(self.endpoint_function)
-            self.handle_endpoint_request()
-        else:
-            self._return_404()
-
+        self.handler()
+        
 
     def parser(self) -> None:
         self._parse_request()
@@ -108,21 +97,23 @@ class PicoHTTPRequestHandler():
                 self.request_body = json.loads(body_json_string)
 
 
+    def handler(self) -> None:
+        command = getattr(self, f'handle_{self.command}')
+        command()
+
 
     def is_static_file_request(self) -> bool:
+        if not os.path.exists(self.path):
+            return False
+
         self.path = os.path.join(os.getcwd(), self.path.lstrip('/'))
         if os.path.isdir(self.path):
             self.path = os.path.join(self.path, 'index.html')
         elif os.path.isfile(self.path):
             pass
 
-        if not os.path.exists(self.path):
-            return False
 
-        self.handle()
-
-
-    def validate_dynamic_request(self) -> bool:
+    def endpoint_exists(self) -> bool:
         #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
         url = self.path.replace("/home/abdo/Documents/my-own-http-server/", "")
         p_posix = Path(url)
@@ -159,7 +150,47 @@ class PicoHTTPRequestHandler():
         self.response_stream.flush()
 
 
-    def handle_endpoint_request(self) -> None:
+    def handle_GET(self) -> None:
+        if is_static_file_request():
+            self.handle_HEAD()
+            with open(self.path, 'rb') as f:
+                body = f.read()
+
+            self.response_stream.write(body)
+            self.response_stream.flush()
+        else:
+            if self.endpoint_exists():
+                request_params = inject_request_params()
+
+                server_response = str(self.endpoint_function(*request_params)).encode("utf-8")
+
+                self.server_response = server_response
+                self.handle_HEAD()
+                self.response_stream.write(self.server_response)
+                self.response_stream.flush()
+            else:
+                self.return_404()
+
+
+    def handle_POST(self) -> None:
+        if self.endpoint_exists:
+            if type(request_body) == dict:
+                self.validate_json_body()
+            server_response = f'{self.request_body}'.encode("utf-8")
+            self.server_response = server_response
+            content_length = len(server_response)
+            self._write_response_line(200)
+            self._write_headers(
+                    **{
+                        "Content-Type": self.request_headers.get("Content-Type"),
+                        "Content-Length": content_length
+                    }
+            )
+            self.response_stream.write(self.server_response)
+            self.response_stream.flush()
+
+
+    def inject_request_params(self) -> list:
         request_path_params = self.request_path_params()
 
         request_params = []
@@ -176,15 +207,11 @@ class PicoHTTPRequestHandler():
             }
             param_signatures.append(parameter)
 
-        print(self.routes)
-
         paramschema = self.routes[f"paramschema{self.command}{self.route_name}"]
 
         paramschema_list = paramschema.split("/") 
 
         ordered_param_name_to_types = []
-
-        print(paramschema_list)
 
         for param in paramschema_list:
             param = param.lstrip("{").rstrip("}")
@@ -196,18 +223,11 @@ class PicoHTTPRequestHandler():
                     }
                     ordered_param_name_to_types.append(param_name_to_type)
 
-        print(len(request_params))
-        print(len(ordered_param_name_to_types))
         for index, request_param in enumerate(request_params):
             target_type = ordered_param_name_to_types[index]['type']
             request_param = target_type(request_param)
 
-        server_response = str(self.endpoint_function(*request_params)).encode("utf-8")
-
-        self.server_response = server_response
-        self.handle_HEAD()
-        self.response_stream.write(self.server_response)
-        self.response_stream.flush()
+        return request_params
 
 
     def request_path_params(self) -> list:
@@ -220,44 +240,26 @@ class PicoHTTPRequestHandler():
         return request_params
 
 
-    def handle(self) -> None:
-        self.handler()
+#unfinished function.
+    def validate_json_body(self) -> bool:
+        param_signatures = []
+        sig = self.routes[f"sig{self.command}{self.route_name}"]
 
+        for name, param in sig.parameters.items():
+            parameter = {
+                    "name": name,
+                    "annotation": param.annotation,
+            }
+            param_signatures.append(parameter)
 
-    def handler(self) -> None:
-        command = getattr(self, f'handle_{self.command}')
-        command()
-
-
-    def handle_GET(self) -> None:
-        if not self.is_dynamic_request:
-            self.handle_HEAD()
-            with open(self.path, 'rb') as f:
-                body = f.read()
-
-            self.response_stream.write(body)
-            self.response_stream.flush()
-        else:
-            server_response = b'this is a generic response from the server'
-            self.server_response = server_response
-            self.handle_HEAD()
-            self.response_stream.write(self.server_response)
-            self.response_stream.flush()
-
-
-    def handle_POST(self) -> None:
-        server_response = f'{self.request_body}'.encode("utf-8")
-        self.server_response = server_response
-        content_length = len(server_response)
-        self._write_response_line(200)
-        self._write_headers(
-                **{
-                    "Content-Type": self.request_headers.get("Content-Type"),
-                    "Content-Length": content_length
-                }
-        )
-        self.response_stream.write(self.server_response)
-        self.response_stream.flush()
+        for param_sig in param_signatures:
+            if inspect.isclass(param_sig["annotation"]):
+                model = param_sig["annotation"]
+        
+        model_attributes = dir(model)
+        request_body = self.request_body
+        if model()
+        
 
 
     def handle_HEAD(self) -> None:
