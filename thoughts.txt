@@ -1,5 +1,5 @@
-so, in the next session i would want to do the following:
-1-parse the signature of the endpoint function, then make a list of dicts with the name and the type of the params.
-2-check the schema of the endpoint url, and map the types of the params made in step 1 with the same param name.
-3-inject params with the correct type and order as in the schema, run it, and handle its failure cases.
-
+A post request inheretely comes with a request body. Most prestigious web framework validate the incoming request body using a predefined model (class) that is passed as a parameter in the endpoint function. The initial approach we have to take is as follows:
+1-check if the function signature contains a param of type "class".
+2-if so, validate only if the request body is of type "application/json".
+3-then we validate the json request body to see if it matches with the model.
+4-we turn the json body into a class instance, inject it to the func and voila.
