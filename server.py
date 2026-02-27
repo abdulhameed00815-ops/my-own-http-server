@@ -1,4 +1,6 @@
 import functools
+from typing import Type
+from pydantic import ValidationError
 import json
 from pathlib import Path
 import asyncio
@@ -175,19 +177,20 @@ class PicoHTTPRequestHandler():
     def handle_POST(self) -> None:
         if self.endpoint_exists:
             if type(request_body) == dict:
-                self.validate_json_body()
-            server_response = f'{self.request_body}'.encode("utf-8")
-            self.server_response = server_response
-            content_length = len(server_response)
-            self._write_response_line(200)
-            self._write_headers(
-                    **{
-                        "Content-Type": self.request_headers.get("Content-Type"),
-                        "Content-Length": content_length
-                    }
-            )
-            self.response_stream.write(self.server_response)
-            self.response_stream.flush()
+                if self.validate_json_body():
+                    class_model = return_class_model()
+                    server_response = str(self.endpoint_function(class_model)).encode("utf-8")
+                    self.server_response = server_response
+                    content_length = len(server_response)
+                    self._write_response_line(200)
+                    self._write_headers(
+                            **{
+                                "Content-Type": self.request_headers.get("Content-Type"),
+                                "Content-Length": content_length
+                            }
+                    )
+                    self.response_stream.write(self.server_response)
+                    self.response_stream.flush()
 
 
     def inject_request_params(self) -> list:
@@ -242,6 +245,9 @@ class PicoHTTPRequestHandler():
 
 #unfinished function.
     def validate_json_body(self) -> bool:
+        if not type(self.request_body) == dict:
+            return False
+        
         param_signatures = []
         sig = self.routes[f"sig{self.command}{self.route_name}"]
 
@@ -256,10 +262,32 @@ class PicoHTTPRequestHandler():
             if inspect.isclass(param_sig["annotation"]):
                 model = param_sig["annotation"]
         
-        model_attributes = dir(model)
         request_body = self.request_body
-        if model()
-        
+
+        try:
+            model.model_validate(request_body)
+            print("json body validated")
+            return True
+        except ValidationError:
+            return False
+
+
+    def return_class_model(self) -> Type:
+        param_signatures = []
+        sig = self.routes[f"sig{self.command}{self.route_name}"]
+
+        for name, param in sig.parameters.items():
+            parameter = {
+                    "name": name,
+                    "annotation": param.annotation,
+            }
+            param_signatures.append(parameter)
+
+        for param_sig in param_signatures:
+            if inspect.isclass(param_sig["annotation"]):
+                model = param_sig["annotation"]
+
+        return model
 
 
     def handle_HEAD(self) -> None:
