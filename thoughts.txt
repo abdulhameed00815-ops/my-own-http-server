@@ -1,5 +1,3 @@
-A post request inheretely comes with a request body. Most prestigious web framework validate the incoming request body using a predefined model (class) that is passed as a parameter in the endpoint function. The initial approach we have to take is as follows:
-1-check if the function signature contains a param of type "class".
-2-if so, validate only if the request body is of type "application/json".
-3-then we validate the json request body to see if it matches with the model.
-4-we turn the json body into a class instance, inject it to the func and voila.
+so the approach to validate a json request body using a class model is one of the two:
+1-try to make an instance of the class using the attributes in the dict (if they match we ll not get errors).
+2-try to manually check every attribute in the dict and its type, compare it with the attributes of the class where the attribute name is the common thing.
