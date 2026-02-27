@@ -1,13 +1,19 @@
 from server import PicoHTTPRequestHandler, PicoTCPServer, RoutesHandler
+from pydantic import BaseModel, ValidationError
 import asyncio
 
 
 app = RoutesHandler()
 
 
-@app.create_custom_endpoint(endpoint_method="GET", endpoint_url="message/{name}/{age}")
-def function(name: str, age: int):
-    message = f"{name} is {age} years old"
+class User(BaseModel):
+    name:str
+    password:str
+
+
+@app.create_custom_endpoint(endpoint_method="POST", "login")
+def function(user: User):
+    message = f"{user.name}'s logged in successfuly!"
     return message
 
 
