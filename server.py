@@ -115,19 +115,6 @@ class PicoHTTPRequestHandler():
             pass
 
 
-    def endpoint_exists(self) -> bool:
-        #now, we know the request is dynamic (not a static file), now we check if this request exists as an endpoint that the user has created.
-        url = self.path.replace("/home/abdo/Documents/my-own-http-server/", "")
-        p_posix = Path(url)
-        request_route_name = p_posix.parts[0]
-        if f"{self.command}{request_route_name}" in self.routes:
-            self.endpoint_function = self.routes[f"{self.command}{request_route_name}"]
-            self.route_name = request_route_name
-            return True
-        else:
-            return False
-
-
     def _return_404(self) -> None:
         self._write_response_line(404)
         self._write_headers()
@@ -153,7 +140,7 @@ class PicoHTTPRequestHandler():
 
 
     def handle_GET(self) -> None:
-        if is_static_file_request():
+        if self.is_static_file_request():
             self.handle_HEAD()
             with open(self.path, 'rb') as f:
                 body = f.read()
@@ -162,7 +149,7 @@ class PicoHTTPRequestHandler():
             self.response_stream.flush()
         else:
             if self.endpoint_exists():
-                request_params = inject_request_params()
+                request_params = self.inject_request_params()
 
                 server_response = str(self.endpoint_function(*request_params)).encode("utf-8")
 
@@ -171,26 +158,40 @@ class PicoHTTPRequestHandler():
                 self.response_stream.write(self.server_response)
                 self.response_stream.flush()
             else:
-                self.return_404()
+                self._return_404()
 
 
     def handle_POST(self) -> None:
-        if self.endpoint_exists:
-            if type(request_body) == dict:
-                if self.validate_json_body():
-                    class_model = return_class_model()
-                    server_response = str(self.endpoint_function(class_model)).encode("utf-8")
-                    self.server_response = server_response
-                    content_length = len(server_response)
-                    self._write_response_line(200)
-                    self._write_headers(
-                            **{
-                                "Content-Type": self.request_headers.get("Content-Type"),
-                                "Content-Length": content_length
-                            }
-                    )
-                    self.response_stream.write(self.server_response)
-                    self.response_stream.flush()
+        if not self.endpoint_exists():
+            self._return_404()
+
+        if type(self.request_body) == dict:
+            if self.validate_json_body():
+                class_model = self.return_class_model()
+                server_response = str(self.endpoint_function(class_model)).encode("utf-8")
+                self.server_response = server_response
+                content_length = len(server_response)
+                self._write_response_line(200)
+                self._write_headers(
+                        **{
+                            "Content-Type": self.request_headers.get("Content-Type"),
+                            "Content-Length": content_length
+                        }
+                )
+                self.response_stream.write(self.server_response)
+                self.response_stream.flush()
+
+
+    def endpoint_exists(self) -> bool:
+        self.path = self.path.lstrip("/")
+        request_route_paths = self.path.split("/")
+        request_route_name = request_route_paths[0]
+        if f"{self.command}{request_route_name}" in self.routes:
+            self.endpoint_function = self.routes[f"{self.command}{request_route_name}"]
+            self.route_name = request_route_name
+            return True
+        else:
+            return False
 
 
     def inject_request_params(self) -> list:
@@ -226,11 +227,14 @@ class PicoHTTPRequestHandler():
                     }
                     ordered_param_name_to_types.append(param_name_to_type)
 
+        final_request_params = []
+
         for index, request_param in enumerate(request_params):
             target_type = ordered_param_name_to_types[index]['type']
             request_param = target_type(request_param)
+            final_request_params.append(request_param)
 
-        return request_params
+        return final_request_params
 
 
     def request_path_params(self) -> list:
@@ -243,7 +247,6 @@ class PicoHTTPRequestHandler():
         return request_params
 
 
-#unfinished function.
     def validate_json_body(self) -> bool:
         if not type(self.request_body) == dict:
             return False
@@ -266,15 +269,15 @@ class PicoHTTPRequestHandler():
 
         try:
             model.model_validate(request_body)
-            print("json body validated")
             return True
         except ValidationError:
             return False
 
 
+    #this function looks for function params of type class, instantiates it with the keyword arguments of the request_body, then returns the instance of the class.
     def return_class_model(self) -> Type:
         param_signatures = []
-        sig = self.routes[f"sig{self.command}{self.route_name}"]
+        sig = self.routes[f'sig{self.command}{self.path.replace("/", "")}']
 
         for name, param in sig.parameters.items():
             parameter = {
@@ -287,13 +290,13 @@ class PicoHTTPRequestHandler():
             if inspect.isclass(param_sig["annotation"]):
                 model = param_sig["annotation"]
 
-        return model
+        return model(**self.request_body)
 
 
     def handle_HEAD(self) -> None:
         self._write_response_line(200)
 
-        if not self.is_dynamic_request:
+        if self.is_static_file_request():
             self._write_headers(
                     **{
                         "Content-Length": len(self.path)
