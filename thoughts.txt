@@ -1,3 +1,4 @@
-so the approach to validate a json request body using a class model is one of the two:
-1-try to make an instance of the class using the attributes in the dict (if they match we ll not get errors).
-2-try to manually check every attribute in the dict and its type, compare it with the attributes of the class where the attribute name is the common thing.
+so, the server now works, it handles get and post requests properly, what are the things that need to be done later:
+1-polish/refactor the code for readability.
+2-write proper documentation for the project.
+
