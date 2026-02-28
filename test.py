@@ -11,10 +11,15 @@ class User(BaseModel):
     password:str
 
 
-@app.create_custom_endpoint(endpoint_method="POST", "login")
-def function(user: User):
+@app.create_custom_endpoint(endpoint_method="POST", endpoint_url="login")
+def login(user: User):
     message = f"{user.name}'s logged in successfuly!"
     return message
+
+
+@app.create_custom_endpoint(endpoint_method="GET", endpoint_url="divide/{x}/{y}")
+def divide(x: int, y: int):
+    return x / y
 
 
 routes = app.routes
